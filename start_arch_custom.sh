@@ -113,20 +113,20 @@ restart() {
 ######## Fonctions Etapes du script ########
 ############################################
 
-part_and_chiffr() {
+part_and_chiffr() { # Sajed
     verif_env
     part_disk
     luks_disk
     conf_lvm
 }
 
-install_sys() {
+install_sys() { # Célian
     mount_disk
     install_arch
     gen_fstab
 }
 
-config_sys() {
+config_sys() { # Sajed
     conf_system
     add_user
     conf_shard_folder
@@ -134,7 +134,7 @@ config_sys() {
     
 }
 
-install_soft() {
+install_soft() { # Célian
     install_hyprland
     install_vbox
     install_firefox
@@ -142,7 +142,7 @@ install_soft() {
     install_system
 }
 
-post_install() {
+post_install() { # Célian
     gen_logs
     clean
     restart
