@@ -88,6 +88,11 @@ install_firefox() {
     # Installation de firefox
 }
 
+install_cdev_env() {
+    # Installation de l'environnement de dev en C
+    # gcc, make, gdb, vim
+}
+
 install_system() {
     # Installation de htop, neofetch, pacman-contrib
 }
@@ -109,6 +114,7 @@ restart() {
 ############################################
 
 part_and_chiffr() {
+    verif_env
     part_disk
     luks_disk
     conf_lvm
@@ -132,6 +138,7 @@ install_soft() {
     install_hyprland
     install_vbox
     install_firefox
+    install_cdev_env
     install_system
 }
 
