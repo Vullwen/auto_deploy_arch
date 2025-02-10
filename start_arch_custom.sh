@@ -24,6 +24,14 @@ VBOXLINK=""
 FIREFOXLINK=""
 
 ############################################
+########## Fonctions utilitaires ###########
+############################################
+
+show_progress() {
+    # Si pas la flemme
+}
+
+############################################
 ########## Fonctions du script #############
 ############################################
 
@@ -102,7 +110,13 @@ gen_logs() {
 }
 
 clean() {
-    # Nettoyage des fichiers temporaires et des trucs useless, démontage des partitions
+    echo "[INFO] Nettoyage des fichiers temporaires et démontage des partitions..."
+
+    umount -R /mnt # On demonte les partitions sur /mnt
+    rm -rf /mnt/* # Suppression des fichiers temps
+    pacman -Scc --noconfirm # Suppression du cache de pacman
+
+    echo "[INFO] Nettoyage terminé."
 }
 
 restart() {
