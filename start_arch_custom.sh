@@ -100,20 +100,58 @@ gen_fstab() {
 }
 
 conf_system() {
-    #configure les hostname, timezone, langue, clavier
+    # Configuration du hostname
+    echo "archlinux" > /etc/hostname
+    echo "127.0.0.1 localhost" >> /etc/hosts
+    echo "::1       localhost" >> /etc/hosts
+    echo "127.0.1.1 archlinux.localdomain archlinux" >> /etc/hosts
+
+    # Configuration du timezone
+    ln -sf /usr/share/zoneinfo/Europe/Paris /etc/localtime
+    hwclock --systohc
+
+    # Configuration de la langue
+    echo "en_US.UTF-8 UTF-8" >> /etc/locale.gen
+    echo "fr_FR.UTF-8 UTF-8" >> /etc/locale.gen
+    locale-gen
+    echo "LANG=fr_FR.UTF-8" > /etc/locale.conf
+
+    # Configuration du clavier
+    echo "KEYMAP=fr" > /etc/vconsole.conf
 }
 
 add_user() {
-    # Création des deux users: collegue et fils 
     # Config sudo
+    useradd -m -G wheel -s /bin/bash $USER1
+    echo "$USER1:$BASEPWD" | chpasswd
+
+    useradd -m -G wheel -s /bin/bash $USER2
+    echo "$USER2:$BASEPWD" | chpasswd
+
+    # Configuration de sudo pour permettre aux utilisateurs du groupe wheel d'utiliser sudo
+    sed -i 's/^# %wheel ALL=(ALL:ALL) ALL/%wheel ALL=(ALL:ALL) ALL/' /etc/sudoers
 }
 
 conf_share_folder() {
-    # Création du dossier partagé entre les deux users, 5go
+    mkdir -p /mnt/shared
+    mount /dev/vg0/lv_shared /mnt/shared
+    chmod 770 /mnt/shared
+    chown $USER1:$USER2 /mnt/shared
 }
 
 install_grub() {
-    # Installation de grub en UEFI
+    # Installation de GRUB en UEFI
+    pacman -S --noconfirm grub efibootmgr
+
+    # Monte la partition EFI
+    mkdir -p /mnt/boot/efi
+    mount /dev/sda1 /mnt/boot/efi
+
+    # Installation de GRUB sur la partition EFI
+    grub-install --target=x86_64-efi --efi-directory=/mnt/boot/efi --bootloader-id=GRUB
+
+    # Génération du fichier de configuration de GRUB
+    grub-mkconfig -o /mnt/boot/grub/grub.cfg
 }
 
 install_hyprland() {
