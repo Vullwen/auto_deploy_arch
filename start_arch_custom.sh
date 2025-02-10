@@ -36,23 +36,55 @@ show_progress() {
 ############################################
 
 verif_env() {
-    # Verif que on est bien en mode live arch et que le disque existe
+    if [ ! -f /usr/bin/arch-chroot ]; then
+        echo "Ce script doit être lancé dans un environnement ArchLinux."
+        exit 1
+    fi
+
+    if ! lsblk | grep -q "/dev/sda"; then
+        echo "Le disque /dev/sda n'existe pas."
+        exit 1
+    fi
+
+    echo "[INFO] Vérification de l'environnement: OK"
 }
 
 part_disk() {
-    # Partitionne le disque en UEFI (esp + luks)
+    parted /dev/sda mklabel gpt # Création de la table de partition
+    parted /dev/sda mkpart primary fat32 1MiB 512MiB # Création de la partition EFI
+    parted /dev/sda set 1 esp on # Activation du flag esp sur la partition EFI
+    parted /dev/sda mkpart primary ext4 512MiB 100% # Création de la partition racine
+
 }
 
 luks_disk() {
+    # Chiffrement de la partition racine
+    echo -n "Entrez une passphrase pour chiffrer la partition: "
+    read -s PASSPHRASE
+    echo
+
     # Chiffrement de la partition
+    echo "$PASSPHRASE" | cryptsetup luksFormat /dev/sda2 -
+    echo "$PASSPHRASE" | cryptsetup open /dev/sda2 cryptroot -
+
+    # Création du système de fichier
+    mkfs.ext4 /dev/mapper/cryptroot
 }
 
 conf_lvm() {
-    # Création des volumes logique: 
-    # Sys /
-    # Partitiion chiffrée de 10go
-    # Espace pour vbox
-    # Espace pour le dossier partagé
+    # Configuration de LVM
+    pvcreate /dev/mapper/cryptroot
+    vgcreate vg0 /dev/mapper/cryptroot
+
+    # Création des volumes logiques
+    lvcreate -L ${ENCRYPTEDSIZE} -n lv_root vg0
+    lvcreate -L ${VBOXLINK} -n lv_vbox vg0
+    lvcreate -L ${SHAREDSPACE} -n lv_shared vg0
+
+    # Création des systèmes de fichiers
+    mkfs.ext4 /dev/vg0/lv_root
+    mkfs.ext4 /dev/vg0/lv_vbox
+    mkfs.ext4 /dev/vg0/lv_shared
 }
 
 mount_disk() {
