@@ -24,6 +24,14 @@ VBOXLINK=""
 FIREFOXLINK=""
 
 ############################################
+########## Fonctions utilitaires ###########
+############################################
+
+show_progress() {
+    # Si pas la flemme
+}
+
+############################################
 ########## Fonctions du script #############
 ############################################
 
@@ -98,16 +106,48 @@ install_system() {
 }
 
 gen_logs() {
-    # Génère un fichier de log avec les commandes demandées
+    echo "[INFO] Génération des logs..."
+
+    LOG_FILE="/var/log/installation_log.txt" # Création du fichier de log
+
+    {
+        echo "=== lsblk -f ==="
+        lsblk -f
+
+        echo "=== cat /etc/passwd /etc/group /etc/fstab /etc/mtab ==="
+        cat /etc/passwd /etc/group /etc/fstab /etc/mtab
+
+        echo "=== echo \$HOSTNAME ==="
+        echo $HOSTNAME
+
+        echo "=== grep -i installed /var/log/pacman.log ==="
+        grep -i installed /var/log/pacman.log
+    } > "$LOG_FILE" # Execution des commandes et reponse envoyées dans le fichier de logs
+
+    echo "[INFO] Logs générés dans $LOG_FILE"
 }
 
+
 clean() {
-    # Nettoyage des fichiers temporaires et des trucs useless, démontage des partitions
+    echo "[INFO] Nettoyage des fichiers temporaires et démontage des partitions..."
+
+    umount -R /mnt # On demonte les partitions sur /mnt
+    rm -rf /mnt/* # Suppression des fichiers temps
+    pacman -Scc --noconfirm # Suppression du cache de pacman
+
+    echo "[INFO] Nettoyage terminé."
 }
 
 restart() {
-    # Redémarrage de la machine
+    echo -n "[INFO] Redémarrage dans 10 secondes... "
+    for i in {10..1}; do
+        echo -ne "\r[INFO] Redémarrage dans $i secondes...   "
+        sleep 1
+    done
+    echo -e "\r[INFO] Redémarrage maintenant...    "
+    reboot
 }
+
 
 ############################################
 ######## Fonctions Etapes du script ########
