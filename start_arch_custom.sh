@@ -106,8 +106,15 @@ clean() {
 }
 
 restart() {
-    # Redémarrage de la machine
+    echo -n "[INFO] Redémarrage dans 10 secondes... "
+    for i in {10..1}; do
+        echo -ne "\r[INFO] Redémarrage dans $i secondes...   "
+        sleep 1
+    done
+    echo -e "\r[INFO] Redémarrage maintenant...    "
+    reboot
 }
+
 
 ############################################
 ######## Fonctions Etapes du script ########
