@@ -106,8 +106,27 @@ install_system() {
 }
 
 gen_logs() {
-    # Génère un fichier de log avec les commandes demandées
+    echo "[INFO] Génération des logs..."
+
+    LOG_FILE="/var/log/installation_log.txt" # Création du fichier de log
+
+    {
+        echo "=== lsblk -f ==="
+        lsblk -f
+
+        echo "=== cat /etc/passwd /etc/group /etc/fstab /etc/mtab ==="
+        cat /etc/passwd /etc/group /etc/fstab /etc/mtab
+
+        echo "=== echo \$HOSTNAME ==="
+        echo $HOSTNAME
+
+        echo "=== grep -i installed /var/log/pacman.log ==="
+        grep -i installed /var/log/pacman.log
+    } > "$LOG_FILE" # Execution des commandes et reponse envoyées dans le fichier de logs
+
+    echo "[INFO] Logs générés dans $LOG_FILE"
 }
+
 
 clean() {
     echo "[INFO] Nettoyage des fichiers temporaires et démontage des partitions..."
