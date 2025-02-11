@@ -155,24 +155,82 @@ install_grub() {
 }
 
 install_hyprland() {
-    # Installation de Hyprland et setup
+    echo "[INFO] Installation de Hyprland et de ses dépendances..."
+
+    pacman -Syu --noconfirm
+
+    # Installation de yay si ce n'est pas déjà fait
+    if ! command -v yay &> /dev/null; then
+        pacman -S --needed base-devel git
+        git clone https://aur.archlinux.org/yay.git
+        cd yay
+        makepkg -si
+    fi
+
+    ## Installation d'une config sympa https://github.com/1amSimp1e/dots/tree/late-night-%F0%9F%8C%83
+    yay -S hyprland-git
+    yay -S waybar-hyprland rofi dunst kitty swaybg swaylock-fancy-git swayidle pamixer light brillo
+    yay -S ttf-font-awesome
+    fc-cache -fv
+    git clone -b late-night-🌃 https://github.com/iamverysimp1e/dots
+    cd dots
+    cp -r ./configs/* ~/.config/
 }
+
+
 
 install_vbox() {
     # Installation de VirtualBox
+    echo "[INFO] Installation de VirtualBox..."
+
+    # Installation de VirtualBox et des modules du noyau
+    pacman -S --noconfirm virtualbox
+
+    # Activation et démarrage du service VirtualBox
+    systemctl enable vboxdrv.service
+    systemctl start vboxdrv.service
+
+    echo "[INFO] VirtualBox installé avec succès."
 }
+
 
 install_firefox() {
-    # Installation de firefox
+    # Installation de Firefox
+    echo "[INFO] Installation de Firefox..."
+
+    # Installation de Firefox
+    pacman -S --noconfirm firefox
+
+    echo "[INFO] Firefox installé avec succès."
 }
+
 
 install_cdev_env() {
-    # Installation de l'environnement de dev en C
-    # gcc, make, gdb, vim
+    # Installation de l'environnement de développement en C
+    echo "[INFO] Installation de l'environnement de développement en C..."
+
+    # Installation des outils de développement
+    pacman -S --noconfirm gcc make gdb vim
+
+    echo "[INFO] Environnement de développement en C installé avec succès."
 }
 
+
 install_system() {
-    # Installation de htop, neofetch, pacman-contrib
+    # Installation des outils système
+    echo "[INFO] Installation des outils système..."
+
+    # Installation des outils
+    pacman -S --noconfirm htop neofetch
+
+    # Installation de pacman-contrib depuis l'AUR
+    echo "[INFO] Installation de pacman-contrib depuis l'AUR..."
+    git clone https://aur.archlinux.org/pacman-contrib.git
+    cd pacman-contrib
+    makepkg -si --noconfirm
+    cd ..
+
+    echo "[INFO] Outils système installés avec succès."
 }
 
 gen_logs() {
