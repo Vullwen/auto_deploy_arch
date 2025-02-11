@@ -88,16 +88,44 @@ conf_lvm() {
 }
 
 mount_disk() {
-    # Monte les partitions sur /mnt
+    echo "[INFO] Montage des partitions..."
+
+    # Créer les points de montage
+    mkdir -p /mnt/boot/efi
+    mkdir -p /mnt/shared
+    mkdir -p /mnt/vbox
+
+    # Monter les partitions
+    mount /dev/mapper/vg0-lv_root /mnt
+    mount /dev/sda1 /mnt/boot/efi
+    mount /dev/vg0/lv_shared /mnt/shared
+    mount /dev/vg0/lv_vbox /mnt/vbox
+
+    echo "[INFO] Partitions montées avec succès."
 }
 
 install_arch() {
-    # Installation de ArchLinux
+    echo "[INFO] Installation du système de base Arch Linux..."
+
+    # Installation des paquets de base
+    pacstrap /mnt base linux linux-firmware vim nano
+
+    # Génération du fstab
+    genfstab -U /mnt >> /mnt/etc/fstab
+
+    echo "[INFO] Installation du système de base terminée."
 }
 
+
 gen_fstab() {
-    # Gen /etc/fstab pour mount auto
+    echo "[INFO] Génération du fichier /etc/fstab..."
+
+    # Génération du fichier fstab
+    genfstab -U /mnt >> /mnt/etc/fstab
+
+    echo "[INFO] Fichier /etc/fstab généré avec succès."
 }
+
 
 conf_system() {
     # Configuration du hostname
