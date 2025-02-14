@@ -289,8 +289,8 @@ EOF
     # 2) Installer pacman-contrib depuis l'AUR en tant que "collegue"
     arch-chroot /mnt runuser -u ${USER1} -- bash <<'EOCOL'
 cd /tmp
-git clone https://gitlab.archlinux.org/pacman/pacman-contrib.git
-cd pacman-contrib
+git clone https://gitlab.archlinux.org/pacman/pacman-contrib-git.git
+cd pacman-contrib-git
 makepkg -si --noconfirm
 EOCOL
 }
