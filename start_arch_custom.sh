@@ -235,8 +235,6 @@ EOF
 install_hyprland() {
     echo "[INFO] Installation de Hyprland et de ses dépendances..."
 
-    pacman -Syu --noconfirm
-
     # Installation de yay si ce n'est pas déjà fait
     if ! command -v yay &> /dev/null; then
         pacman -S --needed base-devel git
