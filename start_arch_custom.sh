@@ -283,7 +283,7 @@ install_system() {
 
     # 1) Installer htop, neofetch en root
     arch-chroot /mnt bash <<EOF
-pacman -S --noconfirm htop neofetch base-devel git
+pacman -S --noconfirm htop neofetch
 EOF
 
     # 2) Installer pacman-contrib depuis l'AUR en tant que "collegue"
