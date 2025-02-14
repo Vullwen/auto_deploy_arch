@@ -149,6 +149,8 @@ install_arch() {
     # Installation des paquets de base
     pacstrap /mnt base linux linux-firmware vim nano
 
+    arch-chroot /mnt
+
     # Génération du fstab
     genfstab -U /mnt >> /mnt/etc/fstab
 
@@ -212,16 +214,20 @@ conf_shared_folder() {
 }
 
 install_grub() {
+    echo "[INFO] Installation de GRUB"
     # Installation de GRUB en UEFI
     pacman -S --noconfirm grub efibootmgr
 
+    echo "[INFO] Configuration de GRUB"
     # Monte la partition EFI
     mkdir -p /mnt/boot/efi
     mount /dev/sda1 /mnt/boot/efi
 
+    echo "[INFO] Installation de GRUB sur la partition EFI..."
     # Installation de GRUB sur la partition EFI
     grub-install --target=x86_64-efi --efi-directory=/mnt/boot/efi --bootloader-id=GRUB --removable
 
+    echo "[INFO] Génération du fichier de configuration de GRUB..."
     # Génération du fichier de configuration de GRUB
     grub-mkconfig -o /mnt/boot/grub/grub.cfg
 }
