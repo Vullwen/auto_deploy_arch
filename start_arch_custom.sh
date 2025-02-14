@@ -223,14 +223,30 @@ install_grub() {
     mkdir -p /mnt/boot/efi
     mount /dev/sda1 /mnt/boot/efi
 
+    # Bind mount necessary filesystems
+    mount --bind /dev /mnt/dev
+    mount --bind /proc /mnt/proc
+    mount --bind /sys /mnt/sys
+    mount --bind /run /mnt/run
+
+    # Chroot into the system
+    arch-chroot /mnt
+
     echo "[INFO] Installation de GRUB sur la partition EFI..."
     # Installation de GRUB sur la partition EFI
-    grub-install --target=x86_64-efi --efi-directory=/mnt/boot/efi --bootloader-id=GRUB --removable
+    grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=GRUB --removable
 
     echo "[INFO] Génération du fichier de configuration de GRUB..."
     # Génération du fichier de configuration de GRUB
-    grub-mkconfig -o /mnt/boot/grub/grub.cfg
+    grub-mkconfig -o /boot/grub/grub.cfg
+
+    # Exit chroot
+    exit
+
+    # Unmount filesystems
+    umount -R /mnt
 }
+
 
 
 
