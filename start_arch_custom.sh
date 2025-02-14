@@ -53,7 +53,7 @@ part_disk() {
     parted /dev/sda mklabel gpt # Création de la table de partition
     parted /dev/sda mkpart primary fat32 1MiB 512MiB # Création de la partition EFI
     parted /dev/sda set 1 esp on # Activation du flag esp sur la partition EFI
-    parted /dev/sda mkpart primary ext4 512MiB 100% # Création de la partition racine
+    parted /dev/sda mkpart primary ext4 1GiB 100% # Création de la partition racine
 }
 
 luks_disk() {
