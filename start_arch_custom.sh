@@ -123,7 +123,10 @@ mount_disk() {
 
     # 3) Formater et monter la partition EFI
     mkfs.fat -F32 "${EFI_PART}"
-    mount "${EFI_PART}" /mnt/boot/efi
+    mkdir -p /boot
+    mount "${EFI_PART}" /boot
+    mkdir -p /mnt/boot
+    mount --bind /boot /mnt/boot
 
     # 4) Monter vbox et shared
     mount "/dev/${VGNAME}/lv_vbox" /mnt/vbox
