@@ -3,13 +3,14 @@
 set -e # Si erreur -> stop
 
 ############################################
-######## Variables d'environnement #########
+######## Variables d'envicnnement #########
 ############################################
 
 HARDDISKSIZE=80G
 RAMSIZE=8G
 ENCRYPTEDSIZE=10G
 SHAREDSPACE=5G
+VBOXSIZE=20G
 CPU=4
 VCPU=8
 
@@ -18,18 +19,17 @@ USER1="collegue"
 USER2="fils"
 BASEPWD="azerty123"
 
-ARCHLINK=""
-HYPRLANDLINK=""
-VBOXLINK=""
-FIREFOXLINK=""
+
+PARTITION="/dev/sda2"
+CRYPT_NAME="cryptroot"
 
 ############################################
 ########## Fonctions utilitaires ###########
 ############################################
 
-show_progress() {
+#show_progress() {
     # Si pas la flemme
-}
+#}
 
 ############################################
 ########## Fonctions du script #############
@@ -37,12 +37,12 @@ show_progress() {
 
 verif_env() {
     if [ ! -f /usr/bin/arch-chroot ]; then
-        echo "Ce script doit être lancé dans un environnement ArchLinux."
+        echo "[INFO] Ce script doit être lancé dans un environnement ArchLinux."
         exit 1
     fi
 
-    if ! lsblk | grep -q "/dev/sda"; then
-        echo "Le disque /dev/sda n'existe pas."
+    if ! lsblk /dev/sda > /dev/null 2>&1; then
+        echo "[INFO] Le disque /dev/sda n'existe pas."
         exit 1
     fi
 
@@ -54,33 +54,39 @@ part_disk() {
     parted /dev/sda mkpart primary fat32 1MiB 512MiB # Création de la partition EFI
     parted /dev/sda set 1 esp on # Activation du flag esp sur la partition EFI
     parted /dev/sda mkpart primary ext4 512MiB 100% # Création de la partition racine
-
 }
 
 luks_disk() {
-    # Chiffrement de la partition racine
-    echo -n "Entrez une passphrase pour chiffrer la partition: "
-    read -s PASSPHRASE
-    echo
+    # Chiffrer la partition avec LUKS
+    echo "[INFO] Chiffrement de ${PARTITION} avec LUKS..."
+    cryptsetup luksFormat "${PARTITION}"
+    if [ $? -ne 0 ]; then
+        echo "[INFO] Erreur lors du chiffrement de la partition."
+        exit 1
+    fi
 
-    # Chiffrement de la partition
-    echo "$PASSPHRASE" | cryptsetup luksFormat /dev/sda2 -
-    echo "$PASSPHRASE" | cryptsetup open /dev/sda2 cryptroot -
-
-    # Création du système de fichier
-    mkfs.ext4 /dev/mapper/cryptroot
+    # Ouvrir la partition chiffrée pour y accéder via /dev/mapper/
+    echo "[INFO] Ouverture de la partition chiffrée..."
+    cryptsetup open "${PARTITION}" "${CRYPT_NAME}"
+    if [ $? -ne 0 ]; then
+        echo "[INFO] Erreur lors de l'ouverture de la partition chiffrée."
+        exit 1
+    fi
 }
 
 conf_lvm() {
+    echo "[INFO] Configuration de LVM"
     # Configuration de LVM
     pvcreate /dev/mapper/cryptroot
     vgcreate vg0 /dev/mapper/cryptroot
 
+    echo "[INFO] Création des volumes"
     # Création des volumes logiques
     lvcreate -L ${ENCRYPTEDSIZE} -n lv_root vg0
-    lvcreate -L ${VBOXLINK} -n lv_vbox vg0
+    lvcreate -L ${VBOXSIZE} -n lv_vbox vg0
     lvcreate -L ${SHAREDSPACE} -n lv_shared vg0
 
+    echo "[INFO] Création des systeme de fichiers"
     # Création des systèmes de fichiers
     mkfs.ext4 /dev/vg0/lv_root
     mkfs.ext4 /dev/vg0/lv_vbox
@@ -95,6 +101,12 @@ mount_disk() {
     mkdir -p /mnt/shared
     mkdir -p /mnt/vbox
 
+    # Formater la partition EFI en ext4 si nécessaire
+    if ! blkid /dev/sda1 | grep -q vfat; then
+        echo "[INFO] Formatage de /dev/sda1 en vfat"
+        mkfs.fat -F32 /dev/sda1
+    fi
+
     # Monter les partitions
     mount /dev/mapper/vg0-lv_root /mnt
     mount /dev/sda1 /mnt/boot/efi
@@ -103,6 +115,7 @@ mount_disk() {
 
     echo "[INFO] Partitions montées avec succès."
 }
+
 
 install_arch() {
     echo "[INFO] Installation du système de base Arch Linux..."
@@ -128,16 +141,19 @@ gen_fstab() {
 
 
 conf_system() {
+    echo "[INFO] Configuration du hostname"
     # Configuration du hostname
     echo "archlinux" > /etc/hostname
     echo "127.0.0.1 localhost" >> /etc/hosts
     echo "::1       localhost" >> /etc/hosts
     echo "127.0.1.1 archlinux.localdomain archlinux" >> /etc/hosts
-
+ 
+    echo "[INFO] Configuration du timezone"
     # Configuration du timezone
     ln -sf /usr/share/zoneinfo/Europe/Paris /etc/localtime
     hwclock --systohc
 
+    echo "Configuration de la langue"
     # Configuration de la langue
     echo "en_US.UTF-8 UTF-8" >> /etc/locale.gen
     echo "fr_FR.UTF-8 UTF-8" >> /etc/locale.gen
@@ -149,6 +165,7 @@ conf_system() {
 }
 
 add_user() {
+    echo "[INFO] Ajout des users"
     # Config sudo
     useradd -m -G wheel -s /bin/bash $USER1
     echo "$USER1:$BASEPWD" | chpasswd
@@ -160,7 +177,8 @@ add_user() {
     sed -i 's/^# %wheel ALL=(ALL:ALL) ALL/%wheel ALL=(ALL:ALL) ALL/' /etc/sudoers
 }
 
-conf_share_folder() {
+conf_shared_folder() {
+    echo "[INFO] Génération du fichier partagé"
     mkdir -p /mnt/shared
     mount /dev/vg0/lv_shared /mnt/shared
     chmod 770 /mnt/shared
@@ -181,6 +199,7 @@ install_grub() {
     # Génération du fichier de configuration de GRUB
     grub-mkconfig -o /mnt/boot/grub/grub.cfg
 }
+
 
 install_hyprland() {
     echo "[INFO] Installation de Hyprland et de ses dépendances..."
@@ -325,7 +344,7 @@ install_sys() { # Célian
 config_sys() { # Sajed
     conf_system
     add_user
-    conf_shard_folder
+    conf_shared_folder
     install_grub
     
 }
