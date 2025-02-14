@@ -117,15 +117,15 @@ mount_disk() {
     mount "/dev/${VGNAME}/lv_root" /mnt
 
     # 2) Créer les points de montage
-    mkdir -p /mnt/boot/efi
+    mkdir -p /mnt/boot
     mkdir -p /mnt/vbox
     mkdir -p /mnt/shared
 
     # 3) Formater et monter la partition EFI
     mkfs.fat -F32 "${EFI_PART}"
-    mkdir -p /boot/efi
-    mount "${EFI_PART}" /boot/efi
-    mount --bind /boot /mnt/boot/efi
+    mkdir -p /boot
+    mount "${EFI_PART}" /boot
+    mount --bind /boot /mnt/boot
 
     # 4) Monter vbox et shared
     mount "/dev/${VGNAME}/lv_vbox" /mnt/vbox
@@ -216,7 +216,7 @@ else
     echo 'GRUB_ENABLE_CRYPTODISK=y' >> /etc/default/grub
 fi
 
-grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=GRUB
+grub-install --target=x86_64-efi --efi-directory=/boot --bootloader-id=GRUB
 grub-mkconfig -o /boot/grub/grub.cfg
 EOF
 }
