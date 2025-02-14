@@ -95,6 +95,7 @@ conf_lvm() {
 
 mount_disk() {
     echo "[INFO] Montage des partitions..."
+    mount /dev/mapper/vg0-lv_root /mnt
 
     # Créer les points de montage
     echo "[INFO] Création des points de montage..."
@@ -139,6 +140,7 @@ mount_disk() {
 
     echo "[INFO] Partitions montées avec succès."
 }
+
 
 
 install_arch() {
