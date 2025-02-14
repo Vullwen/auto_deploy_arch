@@ -5,8 +5,8 @@ set -e  # Si erreur, on stoppe
 ######## Variables d'environnement #########
 ############################################
 
-HARDDISKSIZE=80G  # Indication, non utilisé directement
-RAMSIZE=8G        # Idem
+HARDDISKSIZE=80G
+RAMSIZE=8G        
 CPU=4
 VCPU=8
 
@@ -64,15 +64,15 @@ verif_env() {
 
 part_disk() {
     echo "[INFO] Partitionnement du disque ${DISK} en GPT..."
-    # Efface la table de partitions (attention : destructif)
+    # Efface la table de partitions
     wipefs -a "${DISK}"
     sgdisk --zap-all "${DISK}"
 
     parted "${DISK}" mklabel gpt
-    # Partition EFI (512MiB)
+    # Partition EFI 
     parted "${DISK}" mkpart primary fat32 1MiB 512MiB
     parted "${DISK}" set 1 esp on
-    # Partition chiffrée (le reste)
+    # Partition chiffrée
     parted "${DISK}" mkpart primary ext4 512MiB 100%
     echo "[INFO] Partitionnement terminé."
 }
@@ -232,7 +232,7 @@ set -e
 pacman -Sy --noconfirm base-devel git
 EOF
 
-    # 2) Compiler et installer en tant qu'utilisateur normal (USER1)
+    # 2) Compiler et installer en tant que "collegue"
     arch-chroot /mnt runuser -u ${USER1} -- bash <<'EOCOL'
 set -e
 
@@ -264,7 +264,7 @@ install_vbox() {
     echo "[INFO] Installation de VirtualBox (chroot)..."
     arch-chroot /mnt bash <<EOF
 pacman -S --noconfirm virtualbox
-systemctl enable vboxdrv.service
+systemctl enable vboxweb.service
 EOF
 }
 
@@ -286,7 +286,7 @@ install_system() {
 pacman -S --noconfirm htop neofetch base-devel git
 EOF
 
-    # 2) Installer pacman-contrib depuis l'AUR en tant qu'utilisateur normal
+    # 2) Installer pacman-contrib depuis l'AUR en tant que "collegue"
     arch-chroot /mnt runuser -u ${USER1} -- bash <<'EOCOL'
 cd /tmp
 git clone https://aur.archlinux.org/pacman-contrib.git
@@ -330,9 +330,11 @@ clean() {
 
 restart() {
     echo -n "[INFO] Redémarrage dans 5 secondes... "
-    sleep 5
-    echo
-    echo "[INFO] Redémarrage..."
+    for i in {5..1}; do
+        echo -ne "\r[INFO] Redémarrage dans $i secondes...   "
+        sleep 1
+    done
+    echo -e "\r[INFO] Redémarrage maintenant...    "
     reboot
 }
 
