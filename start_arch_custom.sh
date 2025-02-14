@@ -141,7 +141,6 @@ mount_disk() {
 }
 
 
-
 install_arch() {
     echo "[INFO] Installation du système de base Arch Linux..."
 
