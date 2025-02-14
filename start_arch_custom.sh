@@ -1,384 +1,366 @@
 #!/bin/bash
-
-set -e # Si erreur -> stop
+set -e  # Si erreur, on stoppe
 
 ############################################
-######## Variables d'envicnnement #########
+######## Variables d'environnement #########
 ############################################
 
-HARDDISKSIZE=80G
-RAMSIZE=8G
-ENCRYPTEDSIZE=10G
-SHAREDSPACE=5G
-VBOXSIZE=20G
+HARDDISKSIZE=80G  # Indication, non utilisé directement
+RAMSIZE=8G        # Idem
 CPU=4
 VCPU=8
 
+# Taille des volumes logiques
+ROOTSIZE=40G
+VBOXSIZE=20G
+SHAREDSPACE=5G
+SECRET=10G
 
+# Utilisateurs et mots de passe
 USER1="collegue"
 USER2="fils"
 BASEPWD="azerty123"
 
+# Nom du disque et partitions
+DISK="/dev/sda"
+EFI_PART="${DISK}1"       # Partition EFI
+CRYPT_PART="${DISK}2"     # Partition chiffrée
+CRYPT_NAME="cryptroot"    # Mapping LUKS
 
-PARTITION="/dev/sda2"
-CRYPT_NAME="cryptroot"
+# Nom du VG
+VGNAME="vg0"
 
 ############################################
 ########## Fonctions utilitaires ###########
 ############################################
 
-#show_progress() {
-    # Si pas la flemme
-#}
+verif_env() {
+    # Vérifie si arch-chroot est présent
+    if [ ! -x /usr/bin/arch-chroot ]; then
+        echo "[INFO] arch-chroot est introuvable. Tentative d'installation du paquet arch-install-scripts..."
+        pacman -Sy --noconfirm arch-install-scripts || {
+            echo "[ERREUR] Impossible d'installer arch-install-scripts. Abandon."
+            exit 1
+        }
+        # On revérifie après installation
+        if [ ! -x /usr/bin/arch-chroot ]; then
+            echo "[ERREUR] La commande arch-chroot est toujours introuvable."
+            exit 1
+        fi
+    fi
+
+    # Vérifie que le disque est détecté
+    if ! lsblk "${DISK}" >/dev/null 2>&1; then
+        echo "[ERREUR] Le disque ${DISK} n'existe pas ou n'est pas détecté."
+        exit 1
+    fi
+
+    echo "[INFO] Environnement OK. arch-chroot est disponible."
+}
 
 ############################################
 ########## Fonctions du script #############
 ############################################
 
-verif_env() {
-    if [ ! -f /usr/bin/arch-chroot ]; then
-        echo "[INFO] Ce script doit être lancé dans un environnement ArchLinux."
-        exit 1
-    fi
-
-    if ! lsblk /dev/sda > /dev/null 2>&1; then
-        echo "[INFO] Le disque /dev/sda n'existe pas."
-        exit 1
-    fi
-
-    echo "[INFO] Vérification de l'environnement: OK"
-}
-
 part_disk() {
-    parted /dev/sda mklabel gpt # Création de la table de partition
-    parted /dev/sda mkpart primary fat32 1MiB 512MiB # Création de la partition EFI
-    parted /dev/sda set 1 esp on # Activation du flag esp sur la partition EFI
-    parted /dev/sda mkpart primary ext4 1GiB 100% # Création de la partition racine
+    echo "[INFO] Partitionnement du disque ${DISK} en GPT..."
+    # Efface la table de partitions (attention : destructif)
+    wipefs -a "${DISK}"
+    sgdisk --zap-all "${DISK}"
+
+    parted "${DISK}" mklabel gpt
+    # Partition EFI (512MiB)
+    parted "${DISK}" mkpart primary fat32 1MiB 512MiB
+    parted "${DISK}" set 1 esp on
+    # Partition chiffrée (le reste)
+    parted "${DISK}" mkpart primary ext4 512MiB 100%
+    echo "[INFO] Partitionnement terminé."
 }
 
 luks_disk() {
-    # Chiffrer la partition avec LUKS
-    echo "[INFO] Chiffrement de ${PARTITION} avec LUKS..."
-    cryptsetup luksFormat "${PARTITION}"
-    if [ $? -ne 0 ]; then
-        echo "[INFO] Erreur lors du chiffrement de la partition."
-        exit 1
-    fi
-
-    # Ouvrir la partition chiffrée pour y accéder via /dev/mapper/
+    echo "[INFO] Chiffrement de ${CRYPT_PART} avec LUKS..."
+    echo -n "${BASEPWD}" | cryptsetup luksFormat "${CRYPT_PART}" -q
     echo "[INFO] Ouverture de la partition chiffrée..."
-    cryptsetup open "${PARTITION}" "${CRYPT_NAME}"
-    if [ $? -ne 0 ]; then
-        echo "[INFO] Erreur lors de l'ouverture de la partition chiffrée."
-        exit 1
-    fi
+    echo -n "${BASEPWD}" | cryptsetup open "${CRYPT_PART}" "${CRYPT_NAME}" -q
 }
 
 conf_lvm() {
-    echo "[INFO] Configuration de LVM"
-    # Configuration de LVM
-    pvcreate /dev/mapper/cryptroot
-    vgcreate vg0 /dev/mapper/cryptroot
+    echo "[INFO] Configuration de LVM sur /dev/mapper/${CRYPT_NAME}..."
+    pvcreate "/dev/mapper/${CRYPT_NAME}"
+    vgcreate "${VGNAME}" "/dev/mapper/${CRYPT_NAME}"
 
-    echo "[INFO] Création des volumes"
-    # Création des volumes logiques
-    lvcreate -L ${ENCRYPTEDSIZE} -n lv_root vg0
-    lvcreate -L ${VBOXSIZE} -n lv_vbox vg0
-    lvcreate -L ${SHAREDSPACE} -n lv_shared vg0
+    echo "[INFO] Création des volumes logiques..."
+    # lv_root
+    lvcreate -L "${ROOTSIZE}" -n lv_root "${VGNAME}"
+    # lv_vbox
+    lvcreate -L "${VBOXSIZE}" -n lv_vbox "${VGNAME}"
+    # lv_shared
+    lvcreate -L "${SHAREDSPACE}" -n lv_shared "${VGNAME}"
+    # lv_secret (10Go, re-chiffré à part, non monté automatiquement)
+    lvcreate -L "${SECRET}" -n lv_secret "${VGNAME}"
 
-    echo "[INFO] Création des systeme de fichiers"
-    # Création des systèmes de fichiers
-    mkfs.ext4 /dev/vg0/lv_root
-    mkfs.ext4 /dev/vg0/lv_vbox
-    mkfs.ext4 /dev/vg0/lv_shared
+    echo "[INFO] Formatage des volumes root, vbox, shared..."
+    mkfs.ext4 "/dev/${VGNAME}/lv_root"
+    mkfs.ext4 "/dev/${VGNAME}/lv_vbox"
+    mkfs.ext4 "/dev/${VGNAME}/lv_shared"
+
+    echo "[INFO] Volume 'lv_secret' : chiffrement secondaire..."
+    echo -n "${BASEPWD}" | cryptsetup luksFormat "/dev/${VGNAME}/lv_secret" -q
+    # On n’ouvre pas lv_secret ici, il sera monté manuellement plus tard
+
+    echo "[INFO] LVM configuré."
 }
 
 mount_disk() {
     echo "[INFO] Montage des partitions..."
-    mount /dev/mapper/vg0-lv_root /mnt
+    # 1) Monter la racine
+    mount "/dev/${VGNAME}/lv_root" /mnt
 
-    # Créer les points de montage
-    echo "[INFO] Création des points de montage..."
+    # 2) Créer les points de montage
     mkdir -p /mnt/boot/efi
-    mkdir -p /mnt/shared
     mkdir -p /mnt/vbox
+    mkdir -p /mnt/shared
 
-    # Vérification de la création des points de montage
-    if [ ! -d /mnt/boot/efi ]; then
-        echo "[ERREUR] Impossible de créer /mnt/boot/efi"
-        exit 1
-    fi
+    # 3) Formater et monter la partition EFI
+    mkfs.fat -F32 "${EFI_PART}"
+    mount "${EFI_PART}" /mnt/boot/efi
 
-    if [ ! -d /mnt/shared ]; then
-        echo "[ERREUR] Impossible de créer /mnt/shared"
-        exit 1
-    fi
-
-    if [ ! -d /mnt/vbox ]; then
-        echo "[ERREUR] Impossible de créer /mnt/vbox"
-        exit 1
-    fi
-
-    # Formater la partition EFI en vfat si nécessaire
-    if ! blkid /dev/sda1 | grep -q vfat; then
-        echo "[INFO] Formatage de /dev/sda1 en vfat"
-        mkfs.fat -F32 /dev/sda1
-    fi
-
-    # Monter les partitions
-    echo "[INFO] Montage de /dev/sda1 sur /mnt/boot/efi"
-    mount /dev/sda1 /mnt/boot/efi
-
-    echo "[INFO] Montage de /dev/mapper/vg0-lv_root sur /mnt"
-    mount /dev/mapper/vg0-lv_root /mnt
-
-    echo "[INFO] Montage de /dev/vg0/lv_shared sur /mnt/shared"
-    mount /dev/vg0/lv_shared /mnt/shared
-
-    echo "[INFO] Montage de /dev/vg0/lv_vbox sur /mnt/vbox"
-    mount /dev/vg0/lv_vbox /mnt/vbox
+    # 4) Monter vbox et shared
+    mount "/dev/${VGNAME}/lv_vbox" /mnt/vbox
+    mount "/dev/${VGNAME}/lv_shared" /mnt/shared
 
     echo "[INFO] Partitions montées avec succès."
 }
 
-
-
 install_arch() {
     echo "[INFO] Installation du système de base Arch Linux..."
-
-    # Installation des paquets de base
-    pacstrap /mnt base linux linux-firmware vim nano
-
-    # Génération du fstab
-    genfstab -U /mnt >> /mnt/etc/fstab
-
-    echo "[INFO] Installation du système de base terminée."
+    # Ajout de lvm2 pour mkinitcpio (règles LVM) + sudo
+    pacstrap /mnt base linux linux-firmware vim nano lvm2 sudo
+    echo "[INFO] Système de base installé."
 }
-
 
 gen_fstab() {
     echo "[INFO] Génération du fichier /etc/fstab..."
-
-    # Génération du fichier fstab
     genfstab -U /mnt >> /mnt/etc/fstab
-
-    echo "[INFO] Fichier /etc/fstab généré avec succès."
+    echo "[INFO] /etc/fstab généré."
 }
 
-
 conf_system() {
-    echo "[INFO] Configuration du hostname"
-    # Configuration du hostname
-    echo "archlinux" > /etc/hostname
-    echo "127.0.0.1 localhost" >> /etc/hosts
-    echo "::1       localhost" >> /etc/hosts
-    echo "127.0.1.1 archlinux.localdomain archlinux" >> /etc/hosts
- 
-    echo "[INFO] Configuration du timezone"
-    # Configuration du timezone
-    ln -sf /usr/share/zoneinfo/Europe/Paris /etc/localtime
-    hwclock --systohc
+    echo "[INFO] Configuration du système (chroot)..."
+    arch-chroot /mnt bash <<EOF
+set -e
 
-    echo "Configuration de la langue"
-    # Configuration de la langue
-    echo "en_US.UTF-8 UTF-8" >> /etc/locale.gen
-    echo "fr_FR.UTF-8 UTF-8" >> /etc/locale.gen
-    locale-gen
-    echo "LANG=fr_FR.UTF-8" > /etc/locale.conf
+# Configuration locale, timezone, hostname
+ln -sf /usr/share/zoneinfo/Europe/Paris /etc/localtime
+hwclock --systohc
 
-    # Configuration du clavier
-    echo "KEYMAP=fr" > /etc/vconsole.conf
+echo "en_US.UTF-8 UTF-8" >> /etc/locale.gen
+echo "fr_FR.UTF-8 UTF-8" >> /etc/locale.gen
+locale-gen
+echo "LANG=fr_FR.UTF-8" > /etc/locale.conf
+
+echo "KEYMAP=fr" > /etc/vconsole.conf
+
+echo "archlinux" > /etc/hostname
+cat <<HST >> /etc/hosts
+127.0.0.1   localhost
+::1         localhost
+127.0.1.1   archlinux.localdomain archlinux
+HST
+
+# Hooks pour le chiffrement + LVM
+sed -i 's/^HOOKS=.*/HOOKS=(base udev autodetect modconf block encrypt lvm2 filesystems keyboard fsck)/' /etc/mkinitcpio.conf
+
+# Pour ignorer les avertissements firmware (aic94xx_fw), décommenter si besoin :
+# sed -i '/aic94xx_fw/d' /etc/mkinitcpio.conf
+
+mkinitcpio -P
+EOF
 }
 
 add_user() {
-    echo "[INFO] Ajout des users"
-    # Config sudo
-    useradd -m -G wheel -s /bin/bash $USER1
-    echo "$USER1:$BASEPWD" | chpasswd
+    echo "[INFO] Ajout des utilisateurs dans le chroot..."
+    arch-chroot /mnt bash <<EOF
+set -e
+useradd -m -G wheel -s /bin/bash ${USER1}
+echo "${USER1}:${BASEPWD}" | chpasswd
 
-    useradd -m -G wheel -s /bin/bash $USER2
-    echo "$USER2:$BASEPWD" | chpasswd
+useradd -m -G wheel -s /bin/bash ${USER2}
+echo "${USER2}:${BASEPWD}" | chpasswd
 
-    # Configuration de sudo pour permettre aux utilisateurs du groupe wheel d'utiliser sudo
-    sed -i 's/^# %wheel ALL=(ALL:ALL) ALL/%wheel ALL=(ALL:ALL) ALL/' /etc/sudoers
+# Activation du sudo pour %wheel
+sed -i 's/^# %wheel ALL=(ALL:ALL) ALL/%wheel ALL=(ALL:ALL) ALL/' /etc/sudoers
+EOF
 }
 
 conf_shared_folder() {
-    echo "[INFO] Génération du fichier partagé"
-    mkdir -p /mnt/shared
-    mount /dev/vg0/lv_shared /mnt/shared
-    chmod 770 /mnt/shared
-    chown $USER1:$USER2 /mnt/shared
+    echo "[INFO] Configuration du dossier partagé..."
+    arch-chroot /mnt bash <<EOF
+chown ${USER1}:${USER2} /shared
+chmod 770 /shared
+EOF
 }
 
 install_grub() {
-    echo "[INFO] Installation de GRUB"
-    # Installation de GRUB en UEFI
-    pacstrap /mnt grub efibootmgr  # Installation des paquets dans le système cible
+    echo "[INFO] Installation de GRUB (UEFI) dans le chroot..."
+    arch-chroot /mnt bash <<EOF
+set -e
+pacman -S --noconfirm grub efibootmgr
 
-    # Monter la partition EFI dans le système cible
-    mkdir -p /mnt/boot/efi
-    mount /dev/sda1 /mnt/boot/efi
+# Activer la prise en charge du chiffrement dans GRUB
+if grep -q '^GRUB_ENABLE_CRYPTODISK=' /etc/default/grub; then
+    sed -i 's/^GRUB_ENABLE_CRYPTODISK=.*/GRUB_ENABLE_CRYPTODISK=y/' /etc/default/grub
+else
+    echo 'GRUB_ENABLE_CRYPTODISK=y' >> /etc/default/grub
+fi
 
-    # Entrer dans le chroot pour configurer GRUB
-    arch-chroot /mnt /bin/bash <<EOF
-        echo "[INFO] Installation de GRUB sur la partition EFI..."
-        grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=GRUB --removable
-        grub-mkconfig -o /boot/grub/grub.cfg
+grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=GRUB
+grub-mkconfig -o /boot/grub/grub.cfg
 EOF
+}
 
-    # Démonter après installation
-    umount /mnt/boot/efi
-}       
-
+###
+# IMPORTANT : Installation AUR sous un utilisateur non-root
+###
 
 install_hyprland() {
-    echo "[INFO] Installation de Hyprland et de ses dépendances..."
+    echo "[INFO] Installation de Hyprland et dépendances (chroot)..."
 
-    # Installation de yay si ce n'est pas déjà fait
-    if ! command -v yay &> /dev/null; then
-        pacman -S --needed base-devel git
-        git clone https://aur.archlinux.org/yay.git
-        cd yay
-        makepkg -si
-    fi
+    # 1) Installer base-devel et git en root (pour makepkg)
+    arch-chroot /mnt bash <<EOF
+set -e
+pacman -Sy --noconfirm base-devel git
+EOF
 
-    ## Installation d'une config sympa https://github.com/1amSimp1e/dots/tree/late-night-%F0%9F%8C%83
-    yay -S hyprland-git
-    yay -S waybar-hyprland rofi dunst kitty swaybg swaylock-fancy-git swayidle pamixer light brillo
-    yay -S ttf-font-awesome
-    fc-cache -fv
-    git clone -b late-night-🌃 https://github.com/iamverysimp1e/dots
-    cd dots
-    cp -r ./configs/* ~/.config/
+    # 2) Compiler et installer en tant qu'utilisateur normal (USER1)
+    arch-chroot /mnt runuser -u ${USER1} -- bash <<'EOCOL'
+set -e
+
+# Vérifier si yay est déjà présent
+if ! command -v yay &>/dev/null; then
+  git clone https://aur.archlinux.org/yay.git /tmp/yay
+  cd /tmp/yay
+  makepkg -si --noconfirm
+fi
+
+# Installer Hyprland + Waybar + rofi + ...
+yay -S --noconfirm hyprland-git waybar-hyprland rofi dunst kitty \
+       swaybg swaylock-fancy-git swayidle pamixer light brillo ttf-font-awesome
+
+fc-cache -fv
+
+# Exemple de config
+mkdir -p /home/collegue/.config/hypr
+cat <<HCONF > /home/collegue/.config/hypr/hyprland.conf
+# Configuration minimale
+monitor=,1920x1080,0x0,1
+exec=waybar &
+HCONF
+chown -R collegue:collegue /home/collegue/.config
+EOCOL
 }
-
-
 
 install_vbox() {
-    # Installation de VirtualBox
-    echo "[INFO] Installation de VirtualBox..."
-
-    # Installation de VirtualBox et des modules du noyau
-    pacman -S --noconfirm virtualbox
-
-    # Activation et démarrage du service VirtualBox
-    systemctl enable vboxdrv.service
-    systemctl start vboxdrv.service
-
-    echo "[INFO] VirtualBox installé avec succès."
+    echo "[INFO] Installation de VirtualBox (chroot)..."
+    arch-chroot /mnt bash <<EOF
+pacman -S --noconfirm virtualbox
+systemctl enable vboxdrv.service
+EOF
 }
-
 
 install_firefox() {
-    # Installation de Firefox
-    echo "[INFO] Installation de Firefox..."
-
-    # Installation de Firefox
-    pacman -S --noconfirm firefox
-
-    echo "[INFO] Firefox installé avec succès."
+    echo "[INFO] Installation de Firefox (chroot)..."
+    arch-chroot /mnt pacman -S --noconfirm firefox
 }
-
 
 install_cdev_env() {
-    # Installation de l'environnement de développement en C
-    echo "[INFO] Installation de l'environnement de développement en C..."
-
-    # Installation des outils de développement
-    pacman -S --noconfirm gcc make gdb vim
-
-    echo "[INFO] Environnement de développement en C installé avec succès."
+    echo "[INFO] Installation de l'environnement de dev C (chroot)..."
+    arch-chroot /mnt pacman -S --noconfirm gcc make gdb vim
 }
 
-
 install_system() {
-    # Installation des outils système
-    echo "[INFO] Installation des outils système..."
+    echo "[INFO] Installation d'outils système (chroot)..."
 
-    # Installation des outils
-    pacman -S --noconfirm htop neofetch
+    # 1) Installer htop, neofetch en root
+    arch-chroot /mnt bash <<EOF
+pacman -S --noconfirm htop neofetch base-devel git
+EOF
 
-    # Installation de pacman-contrib depuis l'AUR
-    echo "[INFO] Installation de pacman-contrib depuis l'AUR..."
-    git clone https://aur.archlinux.org/pacman-contrib.git
-    cd pacman-contrib
-    makepkg -si --noconfirm
-    cd ..
-
-    echo "[INFO] Outils système installés avec succès."
+    # 2) Installer pacman-contrib depuis l'AUR en tant qu'utilisateur normal
+    arch-chroot /mnt runuser -u ${USER1} -- bash <<'EOCOL'
+cd /tmp
+git clone https://aur.archlinux.org/pacman-contrib.git
+cd pacman-contrib
+makepkg -si --noconfirm
+EOCOL
 }
 
 gen_logs() {
-    echo "[INFO] Génération des logs..."
+    echo "[INFO] Récupération de quelques logs depuis le chroot..."
+    arch-chroot /mnt bash <<EOF
+LOG_FILE="/var/log/installation_log.txt"
+{
+  echo "=== lsblk -f ==="
+  lsblk -f
 
-    LOG_FILE="/var/log/installation_log.txt" # Création du fichier de log
+  echo "=== cat /etc/passwd /etc/group /etc/fstab ==="
+  cat /etc/passwd
+  cat /etc/group
+  cat /etc/fstab
 
-    {
-        echo "=== lsblk -f ==="
-        lsblk -f
+  echo "=== echo \$HOSTNAME ==="
+  echo \$HOSTNAME
 
-        echo "=== cat /etc/passwd /etc/group /etc/fstab /etc/mtab ==="
-        cat /etc/passwd /etc/group /etc/fstab /etc/mtab
-
-        echo "=== echo \$HOSTNAME ==="
-        echo $HOSTNAME
-
-        echo "=== grep -i installed /var/log/pacman.log ==="
-        grep -i installed /var/log/pacman.log
-    } > "$LOG_FILE" # Execution des commandes et reponse envoyées dans le fichier de logs
-
-    echo "[INFO] Logs générés dans $LOG_FILE"
+  echo "=== grep -i installed /var/log/pacman.log ==="
+  grep -i installed /var/log/pacman.log
+} > "\$LOG_FILE"
+EOF
+    echo "[INFO] Logs générés dans /var/log/installation_log.txt du nouveau système."
 }
 
-
 clean() {
-    echo "[INFO] Nettoyage des fichiers temporaires et démontage des partitions..."
+    echo "[INFO] Nettoyage et démontage des partitions..."
+    arch-chroot /mnt pacman -Scc --noconfirm || true
 
-    umount -R /mnt # On demonte les partitions sur /mnt
-    rm -rf /mnt/* # Suppression des fichiers temps
-    pacman -Scc --noconfirm # Suppression du cache de pacman
+    umount -R /mnt || true
+    cryptsetup close "${CRYPT_NAME}" || true
 
     echo "[INFO] Nettoyage terminé."
 }
 
 restart() {
-    echo -n "[INFO] Redémarrage dans 10 secondes... "
-    for i in {10..1}; do
-        echo -ne "\r[INFO] Redémarrage dans $i secondes...   "
-        sleep 1
-    done
-    echo -e "\r[INFO] Redémarrage maintenant...    "
+    echo -n "[INFO] Redémarrage dans 5 secondes... "
+    sleep 5
+    echo
+    echo "[INFO] Redémarrage..."
     reboot
 }
 
-
 ############################################
-######## Fonctions Etapes du script ########
+######## Fonctions Étapes du script ########
 ############################################
 
-part_and_chiffr() { # Sajed
+part_and_chiffr() { # (Sajed)
     verif_env
     part_disk
     luks_disk
     conf_lvm
 }
 
-install_sys() { # Célian
+install_sys() { # (Célian)
     mount_disk
     install_arch
     gen_fstab
 }
 
-config_sys() { # Sajed
+config_sys() { # (Sajed)
     conf_system
     add_user
     conf_shared_folder
     install_grub
-    
 }
 
-install_soft() { # Célian
+install_soft() { # (Célian)
     install_hyprland
     install_vbox
     install_firefox
@@ -386,7 +368,7 @@ install_soft() { # Célian
     install_system
 }
 
-post_install() { # Célian
+post_install() { # (Célian)
     gen_logs
     clean
     restart
@@ -395,6 +377,11 @@ post_install() { # Célian
 ############################################
 ############### Main script ################
 ############################################
+
+# Rappel : tout /dev/sda sera effacé.
+echo "=== Script d'installation Arch (UEFI + LUKS + LVM) ==="
+echo "CE SCRIPT EFFACE LE DISQUE ${DISK} ENTIEREMENT."
+read -rp "Appuyez sur [Entrée] pour continuer ou Ctrl+C pour annuler..."
 
 part_and_chiffr
 install_sys
