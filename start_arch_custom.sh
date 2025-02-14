@@ -220,11 +220,12 @@ install_grub() {
     mount /dev/sda1 /mnt/boot/efi
 
     # Installation de GRUB sur la partition EFI
-    grub-install --target=x86_64-efi --efi-directory=/mnt/boot/efi --bootloader-id=GRUB
+    grub-install --target=x86_64-efi --efi-directory=/mnt/boot/efi --bootloader-id=GRUB --removable
 
     # Génération du fichier de configuration de GRUB
     grub-mkconfig -o /mnt/boot/grub/grub.cfg
 }
+
 
 
 install_hyprland() {
