@@ -249,14 +249,9 @@ yay -S --noconfirm hyprland-git waybar-hyprland rofi dunst kitty \
 
 fc-cache -fv
 
-# Exemple de config
-mkdir -p /home/collegue/.config/hypr
-cat <<HCONF > /home/collegue/.config/hypr/hyprland.conf
-# Configuration minimale
-monitor=,1920x1080,0x0,1
-exec=waybar &
-HCONF
-chown -R collegue:collegue /home/collegue/.config
+git clone -b late-night-🌃 https://github.com/iamverysimp1e/dots
+cd dots
+cp -r ./configs/* ~/.config/
 EOCOL
 }
 
