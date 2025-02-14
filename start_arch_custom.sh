@@ -149,8 +149,6 @@ install_arch() {
     # Installation des paquets de base
     pacstrap /mnt base linux linux-firmware vim nano
 
-    arch-chroot /mnt
-
     # Génération du fstab
     genfstab -U /mnt >> /mnt/etc/fstab
 
