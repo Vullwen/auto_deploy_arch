@@ -214,36 +214,22 @@ conf_shared_folder() {
 install_grub() {
     echo "[INFO] Installation de GRUB"
     # Installation de GRUB en UEFI
-    pacman -S --noconfirm grub efibootmgr
+    pacstrap /mnt grub efibootmgr  # Installation des paquets dans le système cible
 
-    echo "[INFO] Configuration de GRUB"
-    # Monte la partition EFI
+    # Monter la partition EFI dans le système cible
     mkdir -p /mnt/boot/efi
     mount /dev/sda1 /mnt/boot/efi
 
-    # Bind mount necessary filesystems
-    mount --bind /dev /mnt/dev
-    mount --bind /proc /mnt/proc
-    mount --bind /sys /mnt/sys
-    mount --bind /run /mnt/run
+    # Entrer dans le chroot pour configurer GRUB
+    arch-chroot /mnt /bin/bash <<EOF
+        echo "[INFO] Installation de GRUB sur la partition EFI..."
+        grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=GRUB --removable
+        grub-mkconfig -o /boot/grub/grub.cfg
+EOF
 
-
-    echo "[INFO] Installation de GRUB sur la partition EFI..."
-    # Installation de GRUB sur la partition EFI
-    grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=GRUB --removable
-
-    echo "[INFO] Génération du fichier de configuration de GRUB..."
-    # Génération du fichier de configuration de GRUB
-    grub-mkconfig -o /boot/grub/grub.cfg
-
-    # Exit chroot
-    exit
-
-    # Unmount filesystems
-    umount -R /mnt
-}
-
-
+    # Démonter après installation
+    umount /mnt/boot/efi
+}       
 
 
 install_hyprland() {
