@@ -97,24 +97,49 @@ mount_disk() {
     echo "[INFO] Montage des partitions..."
 
     # Créer les points de montage
+    echo "[INFO] Création des points de montage..."
     mkdir -p /mnt/boot/efi
     mkdir -p /mnt/shared
     mkdir -p /mnt/vbox
 
-    # Formater la partition EFI en ext4 si nécessaire
+    # Vérification de la création des points de montage
+    if [ ! -d /mnt/boot/efi ]; then
+        echo "[ERREUR] Impossible de créer /mnt/boot/efi"
+        exit 1
+    fi
+
+    if [ ! -d /mnt/shared ]; then
+        echo "[ERREUR] Impossible de créer /mnt/shared"
+        exit 1
+    fi
+
+    if [ ! -d /mnt/vbox ]; then
+        echo "[ERREUR] Impossible de créer /mnt/vbox"
+        exit 1
+    fi
+
+    # Formater la partition EFI en vfat si nécessaire
     if ! blkid /dev/sda1 | grep -q vfat; then
         echo "[INFO] Formatage de /dev/sda1 en vfat"
         mkfs.fat -F32 /dev/sda1
     fi
 
     # Monter les partitions
-    mount /dev/mapper/vg0-lv_root /mnt
+    echo "[INFO] Montage de /dev/sda1 sur /mnt/boot/efi"
     mount /dev/sda1 /mnt/boot/efi
+
+    echo "[INFO] Montage de /dev/mapper/vg0-lv_root sur /mnt"
+    mount /dev/mapper/vg0-lv_root /mnt
+
+    echo "[INFO] Montage de /dev/vg0/lv_shared sur /mnt/shared"
     mount /dev/vg0/lv_shared /mnt/shared
+
+    echo "[INFO] Montage de /dev/vg0/lv_vbox sur /mnt/vbox"
     mount /dev/vg0/lv_vbox /mnt/vbox
 
     echo "[INFO] Partitions montées avec succès."
 }
+
 
 
 install_arch() {
