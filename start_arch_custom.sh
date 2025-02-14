@@ -215,6 +215,8 @@ if grep -q '^GRUB_ENABLE_CRYPTODISK=' /etc/default/grub; then
 else
     echo 'GRUB_ENABLE_CRYPTODISK=y' >> /etc/default/grub
 fi
+sed -i 's/^HOOKS=(.*)/HOOKS=(base udev autodetect modconf kms keyboard keymap consolefont block encrypt lvm2 filesystems fsck)/' /etc/mkinitcpio.conf
+mkinitcpio -P
 
 grub-install --target=x86_64-efi --efi-directory=/boot --bootloader-id=GRUB
 grub-mkconfig -o /boot/grub/grub.cfg
@@ -360,7 +362,7 @@ config_sys() { # (Sajed)
 }
 
 install_soft() { # (Célian)
-    install_hyprland
+    #install_hyprland
     install_vbox
     install_firefox
     install_cdev_env
