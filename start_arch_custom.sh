@@ -6,7 +6,7 @@ set -e  # Si erreur, on stoppe
 ############################################
 
 HARDDISKSIZE=80G
-RAMSIZE=8G        
+RAMSIZE=8G
 CPU=4
 VCPU=8
 
@@ -24,14 +24,13 @@ BASEPWD="azerty123"
 # Nom du disque et partitions
 DISK="/dev/sda"
 EFI_PART="${DISK}1"       # Partition EFI
-LVM_PART="${DISK}2"     # Partition LVM
+LVM_PART="${DISK}2"       # Partition pour LVM
 
 # Nom du VG
 VGNAME="vg0"
 
-
 ############################################
-########## Fonctions du script #############
+########## Fonctions utilitaires ###########
 ############################################
 
 verif_env() {
@@ -57,7 +56,10 @@ verif_env() {
 
     echo "[INFO] Environnement OK. arch-chroot est disponible."
 }
- 
+
+############################################
+########## Fonctions du script #############
+############################################
 
 part_disk() {
     echo "[INFO] Partitionnement du disque ${DISK} en GPT..."
@@ -66,19 +68,18 @@ part_disk() {
     sgdisk --zap-all "${DISK}"
 
     parted "${DISK}" mklabel gpt
-    # Partition EFI 
+    # Partition EFI
     parted "${DISK}" mkpart primary fat32 1MiB 512MiB
     parted "${DISK}" set 1 esp on
     # Partition LVM
-    parted "\${DISK}" mkpart primary ext4 512MiB 100%
+    parted "${DISK}" mkpart primary ext4 512MiB 100%
     echo "[INFO] Partitionnement terminé."
 }
 
-
 conf_lvm() {
-    echo "[INFO] Configuration de LVM sur /dev/mapper/${CRYPT_NAME}..."
-    pvcreate "/dev/mapper/${CRYPT_NAME}"
-    vgcreate "${VGNAME}" "/dev/mapper/${CRYPT_NAME}"
+    echo "[INFO] Configuration de LVM sur ${LVM_PART}..."
+    pvcreate "${LVM_PART}"
+    vgcreate "${VGNAME}" "${LVM_PART}"
 
     echo "[INFO] Création des volumes logiques..."
     # lv_root
@@ -87,10 +88,10 @@ conf_lvm() {
     lvcreate -L "${VBOXSIZE}" -n lv_vbox "${VGNAME}"
     # lv_shared
     lvcreate -L "${SHAREDSPACE}" -n lv_shared "${VGNAME}"
-    # lv_secret
+    # lv_secret (non chiffré ici)
     lvcreate -L "${SECRET}" -n lv_secret "${VGNAME}"
 
-    echo "[INFO] Formatage des volumes root, vbox, shared..."
+    echo "[INFO] Formatage des volumes root, vbox, shared, secret..."
     mkfs.ext4 "/dev/${VGNAME}/lv_root"
     mkfs.ext4 "/dev/${VGNAME}/lv_vbox"
     mkfs.ext4 "/dev/${VGNAME}/lv_shared"
@@ -201,10 +202,6 @@ grub-mkconfig -o /boot/grub/grub.cfg
 EOF
 }
 
-###
-# IMPORTANT : Installation AUR sous un utilisateur non-root
-###
-
 install_hyprland() {
     echo "[INFO] Installation de Hyprland et dépendances (chroot)..."
 
@@ -300,7 +297,6 @@ clean() {
     arch-chroot /mnt pacman -Scc --noconfirm || true
 
     umount -R /mnt || true
-    cryptsetup close "${CRYPT_NAME}" || true
 
     echo "[INFO] Nettoyage terminé."
 }
@@ -357,7 +353,7 @@ post_install() { # (Célian)
 ############################################
 
 # Rappel : tout /dev/sda sera effacé.
-echo "=== Script d'installation Arch (UEFI + LUKS + LVM) ==="
+echo "=== Script d'installation Arch (UEFI + LVM) ==="
 echo "CE SCRIPT EFFACE LE DISQUE ${DISK} ENTIEREMENT."
 read -rp "Appuyez sur [Entrée] pour continuer ou Ctrl+C pour annuler..."
 
