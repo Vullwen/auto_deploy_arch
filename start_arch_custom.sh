@@ -362,7 +362,7 @@ config_sys() { # (Sajed)
 }
 
 install_soft() { # (Célian)
-    #install_hyprland
+    install_hyprland
     install_vbox
     install_firefox
     install_cdev_env
