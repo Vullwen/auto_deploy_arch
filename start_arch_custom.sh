@@ -77,12 +77,6 @@ part_disk() {
     echo "[INFO] Partitionnement terminé."
 }
 
-luks_disk() {
-    echo "[INFO] Chiffrement de ${CRYPT_PART} avec LUKS..."
-    echo -n "${BASEPWD}" | cryptsetup luksFormat "${CRYPT_PART}" -q
-    echo "[INFO] Ouverture de la partition chiffrée..."
-    echo -n "${BASEPWD}" | cryptsetup open "${CRYPT_PART}" "${CRYPT_NAME}" -q
-}
 
 conf_lvm() {
     echo "[INFO] Configuration de LVM sur /dev/mapper/${CRYPT_NAME}..."
@@ -348,7 +342,6 @@ restart() {
 part_and_chiffr() { # (Sajed)
     verif_env
     part_disk
-    luks_disk
     conf_lvm
 }
 
