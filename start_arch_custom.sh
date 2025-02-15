@@ -205,8 +205,9 @@ EOF
 
 install_grub() {
     echo "[INFO] Installation de GRUB (UEFI) dans le chroot..."
-    crypt2=$(blkid -s UUID -o value $(CRYPT_PART))
-    echo "GRUB_CMDLINE_LINUX="cryptdevice=UUID=$crypt2:crypt root=/dev/mapper/vg0-lv_root"" >> /mnt/etc/default/grub 
+    crypt2=$(blkid -s UUID -o value "${CRYPT_PART}")
+    echo "GRUB_CMDLINE_LINUX=\"cryptdevice=UUID=${crypt2}:crypt root=/dev/mapper/${VGNAME}-lv_root\"" | tee -a /mnt/etc/default/grub
+
     arch-chroot /mnt bash <<EOF
 set -e
 pacman -S --noconfirm grub efibootmgr
@@ -224,6 +225,7 @@ grub-install --target=x86_64-efi --efi-directory=/boot --bootloader-id=GRUB
 grub-mkconfig -o /boot/grub/grub.cfg
 EOF
 }
+
 
 ###
 # IMPORTANT : Installation AUR sous un utilisateur non-root
