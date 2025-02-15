@@ -24,14 +24,14 @@ BASEPWD="azerty123"
 # Nom du disque et partitions
 DISK="/dev/sda"
 EFI_PART="${DISK}1"       # Partition EFI
-CRYPT_PART="${DISK}2"     # Partition chiffrée
-CRYPT_NAME="cryptroot"    # Mapping LUKS
+LVM_PART="${DISK}2"     # Partition LVM
 
 # Nom du VG
 VGNAME="vg0"
 
+
 ############################################
-########## Fonctions utilitaires ###########
+########## Fonctions du script #############
 ############################################
 
 verif_env() {
@@ -57,10 +57,7 @@ verif_env() {
 
     echo "[INFO] Environnement OK. arch-chroot est disponible."
 }
-
-############################################
-########## Fonctions du script #############
-############################################
+ 
 
 part_disk() {
     echo "[INFO] Partitionnement du disque ${DISK} en GPT..."
@@ -72,8 +69,8 @@ part_disk() {
     # Partition EFI 
     parted "${DISK}" mkpart primary fat32 1MiB 512MiB
     parted "${DISK}" set 1 esp on
-    # Partition chiffrée
-    parted "${DISK}" mkpart primary ext4 512MiB 100%
+    # Partition LVM
+    parted "\${DISK}" mkpart primary ext4 512MiB 100%
     echo "[INFO] Partitionnement terminé."
 }
 
@@ -90,17 +87,14 @@ conf_lvm() {
     lvcreate -L "${VBOXSIZE}" -n lv_vbox "${VGNAME}"
     # lv_shared
     lvcreate -L "${SHAREDSPACE}" -n lv_shared "${VGNAME}"
-    # lv_secret (10Go, re-chiffré à part, non monté automatiquement)
+    # lv_secret
     lvcreate -L "${SECRET}" -n lv_secret "${VGNAME}"
 
     echo "[INFO] Formatage des volumes root, vbox, shared..."
     mkfs.ext4 "/dev/${VGNAME}/lv_root"
     mkfs.ext4 "/dev/${VGNAME}/lv_vbox"
     mkfs.ext4 "/dev/${VGNAME}/lv_shared"
-
-    echo "[INFO] Volume 'lv_secret' : chiffrement secondaire..."
-    echo -n "${BASEPWD}" | cryptsetup luksFormat "/dev/${VGNAME}/lv_secret" -q
-    # On n’ouvre pas lv_secret ici, il sera monté manuellement plus tard
+    mkfs.ext4 "/dev/${VGNAME}/lv_secret"
 
     echo "[INFO] LVM configuré."
 }
@@ -114,6 +108,7 @@ mount_disk() {
     mkdir -p /mnt/boot
     mkdir -p /mnt/vbox
     mkdir -p /mnt/shared
+    mkdir -p /mnt/secret
 
     # 3) Formater et monter la partition EFI
     mkfs.fat -F32 "${EFI_PART}"
@@ -121,9 +116,10 @@ mount_disk() {
     mount "${EFI_PART}" /boot
     mount --bind /boot /mnt/boot
 
-    # 4) Monter vbox et shared
+    # 4) Monter vbox, shared et secret
     mount "/dev/${VGNAME}/lv_vbox" /mnt/vbox
     mount "/dev/${VGNAME}/lv_shared" /mnt/shared
+    mount "/dev/${VGNAME}/lv_secret" /mnt/secret
 
     echo "[INFO] Partitions montées avec succès."
 }
@@ -164,11 +160,8 @@ cat <<HST >> /etc/hosts
 127.0.1.1   archlinux.localdomain archlinux
 HST
 
-# Hooks pour le chiffrement + LVM
-sed -i 's/^HOOKS=.*/HOOKS=(base udev autodetect modconf block encrypt lvm2 filesystems keyboard fsck)/' /etc/mkinitcpio.conf
-
-# Pour ignorer les avertissements firmware (aic94xx_fw), décommenter si besoin :
-# sed -i '/aic94xx_fw/d' /etc/mkinitcpio.conf
+# Hooks pour LVM
+sed -i 's/^HOOKS=.*/HOOKS=(base udev autodetect modconf block lvm2 filesystems keyboard fsck)/' /etc/mkinitcpio.conf
 
 mkinitcpio -P
 EOF
@@ -199,27 +192,14 @@ EOF
 
 install_grub() {
     echo "[INFO] Installation de GRUB (UEFI) dans le chroot..."
-    crypt2=$(blkid -s UUID -o value "${CRYPT_PART}")
-    echo "GRUB_CMDLINE_LINUX=\"cryptdevice=UUID=${crypt2}:crypt root=/dev/mapper/${VGNAME}-lv_root\"" | tee -a /mnt/etc/default/grub
-
     arch-chroot /mnt bash <<EOF
 set -e
 pacman -S --noconfirm grub efibootmgr
-
-# Activer la prise en charge du chiffrement dans GRUB
-if grep -q '^GRUB_ENABLE_CRYPTODISK=' /etc/default/grub; then
-    sed -i 's/^GRUB_ENABLE_CRYPTODISK=.*/GRUB_ENABLE_CRYPTODISK=y/' /etc/default/grub
-else
-    echo 'GRUB_ENABLE_CRYPTODISK=y' >> /etc/default/grub
-fi
-sed -i 's/^HOOKS=(.*)/HOOKS=(base udev autodetect modconf kms keyboard keymap consolefont block encrypt lvm2 filesystems fsck)/' /etc/mkinitcpio.conf
-mkinitcpio -P
 
 grub-install --target=x86_64-efi --efi-directory=/boot --bootloader-id=GRUB
 grub-mkconfig -o /boot/grub/grub.cfg
 EOF
 }
-
 
 ###
 # IMPORTANT : Installation AUR sous un utilisateur non-root
@@ -339,7 +319,7 @@ restart() {
 ######## Fonctions Étapes du script ########
 ############################################
 
-part_and_chiffr() { # (Sajed)
+part_and_lvm() { # (Sajed)
     verif_env
     part_disk
     conf_lvm
@@ -381,7 +361,7 @@ echo "=== Script d'installation Arch (UEFI + LUKS + LVM) ==="
 echo "CE SCRIPT EFFACE LE DISQUE ${DISK} ENTIEREMENT."
 read -rp "Appuyez sur [Entrée] pour continuer ou Ctrl+C pour annuler..."
 
-part_and_chiffr
+part_and_lvm
 install_sys
 config_sys
 install_soft
