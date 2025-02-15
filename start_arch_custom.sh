@@ -204,34 +204,10 @@ EOF
 
 install_hyprland() {
     echo "[INFO] Installation de Hyprland et dépendances (chroot)..."
-
-    # 1) Installer base-devel et git en root (pour makepkg)
     arch-chroot /mnt bash <<EOF
 set -e
-pacman -Sy --noconfirm base-devel git
+pacman -S --noconfirm hyprland waybar rofi dunst kitty swaybg swaylock swayidle pamixer light
 EOF
-
-    # 2) Compiler et installer en tant que "collegue"
-    arch-chroot /mnt runuser -u ${USER1} -- bash <<'EOCOL'
-set -e
-
-# Vérifier si yay est déjà présent
-if ! command -v yay &>/dev/null; then
-  git clone https://aur.archlinux.org/yay.git /tmp/yay
-  cd /tmp/yay
-  makepkg -si --noconfirm
-fi
-
-# Installer Hyprland + Waybar + rofi + ...
-yay -S --noconfirm hyprland-git waybar-hyprland rofi dunst kitty \
-       swaybg swaylock-fancy-git swayidle pamixer light brillo ttf-font-awesome
-
-fc-cache -fv
-
-git clone -b late-night-🌃 https://github.com/iamverysimp1e/dots
-cd dots
-cp -r ./configs/* ~/.config/
-EOCOL
 }
 
 install_vbox() {
@@ -254,19 +230,9 @@ install_cdev_env() {
 
 install_system() {
     echo "[INFO] Installation d'outils système (chroot)..."
-
-    # 1) Installer htop, neofetch en root
     arch-chroot /mnt bash <<EOF
 pacman -S --noconfirm htop neofetch
 EOF
-
-    # 2) Installer pacman-contrib depuis l'AUR en tant que "collegue"
-    arch-chroot /mnt runuser -u ${USER1} -- bash <<'EOCOL'
-cd /tmp
-git clone https://aur.archlinux.org/pacman-contrib-git.git
-cd pacman-contrib-git
-makepkg -si --noconfirm
-EOCOL
 }
 
 gen_logs() {
