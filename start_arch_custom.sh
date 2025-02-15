@@ -205,6 +205,8 @@ EOF
 
 install_grub() {
     echo "[INFO] Installation de GRUB (UEFI) dans le chroot..."
+    crypt2=$(blkid -s UUID -o value $(CRYPT_PART))
+    echo "GRUB_CMDLINE_LINUX="cryptdevice=UUID=$crypt2:crypt root=/dev/mapper/vg0-lv_root"" >> /mnt/etc/default/grub 
     arch-chroot /mnt bash <<EOF
 set -e
 pacman -S --noconfirm grub efibootmgr
