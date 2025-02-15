@@ -206,7 +206,7 @@ install_hyprland() {
     echo "[INFO] Installation de Hyprland et dépendances (chroot)..."
     arch-chroot /mnt bash <<EOF
 set -e
-pacman -S --noconfirm hyprland waybar rofi dunst kitty swaybg swaylock swayidle pamixer light
+pacman -S --noconfirm hyprland waybar rofi dunst kitty swaybg swaylock swayidle pamixer
 EOF
 }
 
