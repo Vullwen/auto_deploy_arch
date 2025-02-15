@@ -69,10 +69,10 @@ part_disk() {
     sgdisk --zap-all "${DISK}"
 
     parted "${DISK}" mklabel gpt
-    # Partition EFI 
+    # Partition EFI
     parted "${DISK}" mkpart primary fat32 1MiB 512MiB
     parted "${DISK}" set 1 esp on
-    # Partition chiffrée
+    # Partition principale (non chiffrée)
     parted "${DISK}" mkpart primary ext4 512MiB 100%
     echo "[INFO] Partitionnement terminé."
 }
@@ -85,18 +85,18 @@ luks_disk() {
 }
 
 conf_lvm() {
-    echo "[INFO] Configuration de LVM sur /dev/mapper/${CRYPT_NAME}..."
-    pvcreate "/dev/mapper/${CRYPT_NAME}"
-    vgcreate "${VGNAME}" "/dev/mapper/${CRYPT_NAME}"
+    echo "[INFO] Configuration de LVM sur ${DISK}2..."
+    pvcreate "${DISK}2"
+    vgcreate "${VGNAME}" "${DISK}2"
 
     echo "[INFO] Création des volumes logiques..."
-    # lv_root
+    # lv_root (non chiffré)
     lvcreate -L "${ROOTSIZE}" -n lv_root "${VGNAME}"
-    # lv_vbox
+    # lv_vbox (non chiffré)
     lvcreate -L "${VBOXSIZE}" -n lv_vbox "${VGNAME}"
-    # lv_shared
+    # lv_shared (non chiffré)
     lvcreate -L "${SHAREDSPACE}" -n lv_shared "${VGNAME}"
-    # lv_secret (10Go, re-chiffré à part, non monté automatiquement)
+    # lv_secret (chiffré)
     lvcreate -L "${SECRET}" -n lv_secret "${VGNAME}"
 
     echo "[INFO] Formatage des volumes root, vbox, shared..."
@@ -205,20 +205,9 @@ EOF
 
 install_grub() {
     echo "[INFO] Installation de GRUB (UEFI) dans le chroot..."
-    crypt2=$(blkid -s UUID -o value $(CRYPT_PART))
-    echo "GRUB_CMDLINE_LINUX="cryptdevice=UUID=$crypt2:crypt root=/dev/mapper/vg0-lv_root"" >> /mnt/etc/default/grub 
     arch-chroot /mnt bash <<EOF
 set -e
 pacman -S --noconfirm grub efibootmgr
-
-# Activer la prise en charge du chiffrement dans GRUB
-if grep -q '^GRUB_ENABLE_CRYPTODISK=' /etc/default/grub; then
-    sed -i 's/^GRUB_ENABLE_CRYPTODISK=.*/GRUB_ENABLE_CRYPTODISK=y/' /etc/default/grub
-else
-    echo 'GRUB_ENABLE_CRYPTODISK=y' >> /etc/default/grub
-fi
-sed -i 's/^HOOKS=(.*)/HOOKS=(base udev autodetect modconf kms keyboard keymap consolefont block encrypt lvm2 filesystems fsck)/' /etc/mkinitcpio.conf
-mkinitcpio -P
 
 grub-install --target=x86_64-efi --efi-directory=/boot --bootloader-id=GRUB
 grub-mkconfig -o /boot/grub/grub.cfg
